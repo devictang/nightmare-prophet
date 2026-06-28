@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useGameStore } from '../stores/gameStore';
 import { CLASS_NAMES, CLASS_DESCRIPTIONS } from '../lib/constants';
@@ -13,15 +14,15 @@ const CLASS_ICONS: Record<string, string> = {
 };
 
 export default function HomePage() {
+  const navigate = useNavigate();
   const [selectedClass, setSelectedClass] = useState<PlayerClass>('warrior');
   const [playerName, setPlayerName] = useState('夢魘先知');
 
   const startGame = () => {
     const store = useGameStore.getState();
     store.newGame();
-    store.player.name = playerName;
-    store.player.playerClass = selectedClass;
-    store.setScreen('camp');
+    store.startNewGame(playerName, selectedClass);
+    navigate('/game');
   };
 
   return (
@@ -100,7 +101,7 @@ export default function HomePage() {
                 if (raw) {
                   const save = JSON.parse(raw);
                   useGameStore.getState().loadSave(save);
-                  useGameStore.getState().setScreen('camp');
+                  navigate('/game');
                 }
               } catch {}
             }}

@@ -42,6 +42,7 @@ interface GameStore {
   equipItem: (eq: Equipment) => void;
   generateWillpowerCards: () => void;
   newGame: () => void;
+  startNewGame: (name: string, playerClass: PlayerClass) => void;
   loadSave: (save: GameSave) => void;
   getSave: () => GameSave;
   tickIdle: () => void;
@@ -308,6 +309,21 @@ export const useGameStore = create<GameStore>((set, get) => ({
       activeCards: [],
       willpowerCards: [],
       combat: null,
+      screen: 'camp',
+    });
+  },
+
+  startNewGame: (name, playerClass) => {
+    set({
+      player: {
+        ...INITIAL_PLAYER,
+        name,
+        playerClass,
+        maxHp: playerClass === 'warrior' ? 130 : playerClass === 'rogue' ? 90 : 100,
+        hp: playerClass === 'warrior' ? 130 : playerClass === 'rogue' ? 90 : 100,
+        atk: playerClass === 'mage' ? 15 : playerClass === 'ranger' ? 14 : playerClass === 'rogue' ? 10 : 12,
+        def: playerClass === 'warrior' ? 8 : playerClass === 'rogue' ? 3 : 4,
+      },
       screen: 'camp',
     });
   },
