@@ -11,7 +11,7 @@ export type Equipment = {
   baseAtk: number;
   baseDef: number;
   affixes: string[];
-  isAnchored: boolean; // presence Lv5 → survives rebirth
+  isAnchored: boolean;
 };
 
 export type EquipmentTemplate = {
@@ -58,14 +58,25 @@ export type TalentTree = {
   nodes: TalentNode[];
 };
 
+export type ProductionBuilding = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  cost: number;
+  costMultiplier: number;
+  count: number;
+  oreRate: number;   // ironOre per second per building
+  crystalRate: number; // crystal per second per building
+};
+
 export type Resources = {
+  dreamShard: number;
   ironOre: number;
   crystal: number;
   dreamFragment: number;
   realityAnchor: number;
 };
-
-export type ResourceKey = keyof Resources;
 
 export type Enemy = {
   name: string;
@@ -78,7 +89,7 @@ export type Enemy = {
   isBoss: boolean;
 };
 
-export type CombatAction = 'attack' | 'defend' | 'charge' | 'skill1' | 'skill2' | 'skill3';
+export type CombatAction = 'attack' | 'defend' | 'charge';
 
 export type CombatState = {
   enemy: Enemy;
@@ -86,7 +97,6 @@ export type CombatState = {
   playerMaxHp: number;
   tempoBar: number;
   maxTempo: number;
-  cooldowns: Record<string, number>;
   turn: number;
   isPlayerTurn: boolean;
   isActive: boolean;
@@ -109,5 +119,9 @@ export type GameSave = {
   resources: Resources;
   equipment: Partial<Record<EquipmentSlot, Equipment>>;
   talentTrees: Record<PlayerClass, TalentTree>;
+  buildings: ProductionBuilding[];
+  trainingClass: PlayerClass;
   lastSavedAt: number;
 };
+
+export type TabId = 'gather' | 'training' | 'combat' | 'forge';

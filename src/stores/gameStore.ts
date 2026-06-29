@@ -2,50 +2,49 @@ import { create } from 'zustand';
 import type {
   Player, Resources, Equipment, EquipmentSlot, CombatState,
   CombatAction, TalentTree, PlayerClass, WillpowerCard, GameSave,
+  ProductionBuilding, TabId,
 } from '../lib/types';
 import {
   INITIAL_PLAYER, INITIAL_RESOURCES, TALENT_TREES, MAX_TEMPO,
-  ENEMIES, WILLPOWER_CARDS,
+  ENEMIES, BUILDING_DEFS, WILLPOWER_CARDS,
 } from '../lib/constants';
-import { calcDamage, expForLevel, randInt } from '../lib/gameEngine';
+import { calcDamage, expForLevel, randInt, getBuildingCost } from '../lib/gameEngine';
 
 interface GameStore {
-  // Core state
   player: Player;
   resources: Resources;
   equipment: Partial<Record<EquipmentSlot, Equipment>>;
   talentTrees: Record<PlayerClass, TalentTree>;
   activeCards: WillpowerCard[];
   willpowerCards: WillpowerCard[];
-
-  // Combat
   combat: CombatState | null;
-
-  // UI
-  screen: 'camp' | 'forge' | 'training' | 'combat' | 'equipment' | 'rebirth' | 'loading';
+  buildings: ProductionBuilding[];
+  activeTab: TabId;
+  trainingClass: PlayerClass;
   showResourceAnim: string | null;
   lastSaveTime: number;
 
-  // Actions
-  setScreen: (s: GameStore['screen']) => void;
-  clickGather: () => void;
-  clickTrain: () => void;
-  calcIdleResources: (elapsedMs: number) => void;
+  setActiveTab: (t: TabId) => void;
+  setTrainingClass: (cls: PlayerClass) => void;
+  clickDreamShard: () => void;
+  buyBuilding: (id: string) => void;
+  tickProduction: (deltaMs: number) => void;
+  tickTraining: (deltaMs: number) => void;
   addTalentPoint: (className: PlayerClass, nodeId: string) => void;
-  forgeEquip: (slot: EquipmentSlot, type: 'level' | 'presence') => boolean;
+  forgeEquipLevel: (slot: EquipmentSlot) => boolean;
   upgradePresence: (slot: EquipmentSlot) => boolean;
+  equipItem: (eq: Equipment) => void;
+  craftEquip: (slot: EquipmentSlot) => void;
   startCombat: () => void;
   combatAction: (action: CombatAction) => void;
   endCombat: () => void;
   doRebirth: () => void;
   buyWillpowerCard: (cardId: string) => void;
-  equipItem: (eq: Equipment) => void;
   generateWillpowerCards: () => void;
   newGame: () => void;
   startNewGame: (name: string, playerClass: PlayerClass) => void;
   loadSave: (save: GameSave) => void;
   getSave: () => GameSave;
-  tickIdle: () => void;
 }
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -56,65 +55,88 @@ export const useGameStore = create<GameStore>((set, get) => ({
   activeCards: [],
   willpowerCards: [],
   combat: null,
-  screen: 'camp',
+  buildings: JSON.parse(JSON.stringify(BUILDING_DEFS)),
+  activeTab: 'gather',
+  trainingClass: 'warrior',
   showResourceAnim: null,
   lastSaveTime: Date.now(),
 
-  setScreen: (s) => set({ screen: s }),
+  setActiveTab: (t) => set({ activeTab: t }),
 
-  clickGather: () => {
+  setTrainingClass: (cls) => set({ trainingClass: cls }),
+
+  clickDreamShard: () => {
     const { player, resources } = get();
-    const layerBonus = 1 + (player.dreamLayer - 1) * 0.2;
+    const gain = 1 + (player.dreamLayer - 1) * 0.5;
     set({
-      resources: {
-        ...resources,
-        ironOre: resources.ironOre + Math.floor(5 * layerBonus),
-        crystal: resources.crystal + Math.floor(2 * layerBonus),
-      },
-      showResourceAnim: '採集',
+      resources: { ...resources, dreamShard: resources.dreamShard + Math.floor(gain) },
+      showResourceAnim: `+${Math.floor(gain)} 💠`,
     });
   },
 
-  clickTrain: () => {
-    const { player } = get();
-    const expGain = 8 + player.level * 2;
+  buyBuilding: (id) => {
+    const { resources, buildings } = get();
+    const idx = buildings.findIndex(b => b.id === id);
+    if (idx === -1) return;
+    const def = buildings[idx];
+    const cost = getBuildingCost(def);
+    if (resources.dreamShard < cost) return;
+    const newBuildings = [...buildings];
+    newBuildings[idx] = { ...def, count: def.count + 1 };
+    set({
+      resources: { ...resources, dreamShard: resources.dreamShard - cost },
+      buildings: newBuildings,
+      showResourceAnim: `🏗️ ${def.name}`,
+    });
+  },
+
+  tickProduction: (deltaMs) => {
+    const { buildings, resources } = get();
+    const secs = deltaMs / 1000;
+    let ore = 0;
+    let crystal = 0;
+    for (const b of buildings) {
+      ore += b.oreRate * b.count * secs;
+      crystal += b.crystalRate * b.count * secs;
+    }
+    if (ore < 0.001 && crystal < 0.001) return;
+    set({
+      resources: {
+        ...resources,
+        ironOre: resources.ironOre + ore,
+        crystal: resources.crystal + crystal,
+      },
+    });
+  },
+
+  tickTraining: (deltaMs) => {
+    const { player, trainingClass, talentTrees } = get();
+    const secs = deltaMs / 1000;
+    const baseSpeed = 0.5 + player.level * 0.1;
+    // Bonus from talent points in training class
+    const tree = talentTrees[trainingClass];
+    const totalRanks = tree.nodes.reduce((sum, n) => sum + n.rank, 0);
+    const talentBonus = 1 + totalRanks * 0.05;
+    const expGain = baseSpeed * secs * talentBonus;
+    if (expGain < 0.01) return;
     const newExp = player.exp + expGain;
     const needed = expForLevel(player.level, player.dreamLayer);
     if (newExp >= needed) {
+      const overflow = newExp - needed;
       set({
         player: {
           ...player,
-          exp: newExp - needed,
           level: player.level + 1,
+          exp: overflow,
           talentPoints: player.talentPoints + 1,
           maxHp: player.maxHp + 10,
           hp: player.maxHp + 10,
           atk: player.atk + 2,
         },
-        showResourceAnim: '升級！',
       });
     } else {
-      set({
-        player: { ...player, exp: newExp },
-        showResourceAnim: '訓練',
-      });
+      set({ player: { ...player, exp: newExp } });
     }
-  },
-
-  calcIdleResources: (elapsedMs) => {
-    const { player, resources } = get();
-    const hours = elapsedMs / 3600000;
-    if (hours < 0.01) return;
-    const baseRate = 10 + player.level * 2;
-    const layerMultiplier = 1 + (player.dreamLayer - 1) * 0.2;
-    set({
-      resources: {
-        ...resources,
-        ironOre: resources.ironOre + Math.floor(hours * baseRate * layerMultiplier),
-        crystal: resources.crystal + Math.floor(hours * (baseRate * 0.4) * layerMultiplier),
-      },
-      lastSaveTime: Date.now(),
-    });
   },
 
   addTalentPoint: (className, nodeId) => {
@@ -140,21 +162,18 @@ export const useGameStore = create<GameStore>((set, get) => ({
     });
   },
 
-  forgeEquip: (slot, type) => {
+  forgeEquipLevel: (slot) => {
     const { resources, equipment } = get();
-    if (type === 'level') {
-      const cost = 30 + ((equipment[slot]?.level || 0) * 10);
-      if (resources.ironOre < cost) return false;
-      const eq = equipment[slot];
-      if (!eq) return false;
-      set({
-        resources: { ...resources, ironOre: resources.ironOre - cost },
-        equipment: { ...equipment, [slot]: { ...eq, level: eq.level + 1 } },
-        showResourceAnim: '鍛造升級',
-      });
-      return true;
-    }
-    return false;
+    const eq = equipment[slot];
+    if (!eq) { get().craftEquip(slot); return true; }
+    const cost = 30 + eq.level * 10;
+    if (resources.ironOre < cost) return false;
+    set({
+      resources: { ...resources, ironOre: resources.ironOre - cost },
+      equipment: { ...equipment, [slot]: { ...eq, level: eq.level + 1 } },
+      showResourceAnim: '⚒️ 升級',
+    });
+    return true;
   },
 
   upgradePresence: (slot) => {
@@ -164,7 +183,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const cost = 20 + eq.presence * 10;
     const anchorCost = 1 + eq.presence;
     if (resources.crystal < cost || resources.realityAnchor < anchorCost) return false;
-    const isAnchored = eq.presence + 1 >= 5;
     set({
       resources: {
         ...resources,
@@ -173,11 +191,45 @@ export const useGameStore = create<GameStore>((set, get) => ({
       },
       equipment: {
         ...equipment,
-        [slot]: { ...eq, presence: eq.presence + 1, isAnchored },
+        [slot]: { ...eq, presence: eq.presence + 1, isAnchored: eq.presence + 1 >= 5 },
       },
-      showResourceAnim: '存在感提升',
+      showResourceAnim: '✨ 存在感提升',
     });
     return true;
+  },
+
+  craftEquip: (slot) => {
+    const { resources, equipment } = get();
+    const cost = slot === 'accessory' ? 40 : 30;
+    if (resources.ironOre < cost) return;
+    const baseMap: Record<string, { n: string; a: number; d: number }> = {
+      weapon: { n: '鐵劍', a: 12, d: 0 },
+      armor: { n: '鐵甲', a: 0, d: 10 },
+      accessory: { n: '力量指環', a: 5, d: 0 },
+    };
+    const b = baseMap[slot];
+    if (!b) return;
+    const eq: Equipment = {
+      id: `${slot}_${Date.now()}_${randInt(0,999)}`,
+      slot,
+      name: b.n,
+      level: 1,
+      presence: 0,
+      baseAtk: b.a,
+      baseDef: b.d,
+      affixes: [],
+      isAnchored: false,
+    };
+    set({
+      resources: { ...resources, ironOre: resources.ironOre - cost },
+      equipment: { ...equipment, [slot]: eq },
+      showResourceAnim: `🔨 打造 ${b.n}`,
+    });
+  },
+
+  equipItem: (eq) => {
+    const { equipment } = get();
+    set({ equipment: { ...equipment, [eq.slot]: eq } });
   },
 
   startCombat: () => {
@@ -191,13 +243,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
         playerMaxHp: player.maxHp,
         tempoBar: 2,
         maxTempo: MAX_TEMPO,
-        cooldowns: {},
         turn: 0,
         isPlayerTurn: true,
         isActive: true,
         result: 'none',
       },
-      screen: 'combat',
     });
   },
 
@@ -209,8 +259,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const { damage } = calcDamage(state.player.atk, combat.enemy.def, 1, false);
       const newEnemy = { ...combat.enemy, hp: Math.max(0, combat.enemy.hp - damage) };
       const newTempo = Math.min(combat.maxTempo, combat.tempoBar + 1);
-      const isDead = newEnemy.hp <= 0;
-      if (isDead) {
+      if (newEnemy.hp <= 0) {
         const reward = combat.enemy.isBoss
           ? { dreamFragment: state.resources.dreamFragment + randInt(5, 10), realityAnchor: state.resources.realityAnchor + 1 }
           : { dreamFragment: state.resources.dreamFragment + randInt(1, 3) };
@@ -221,34 +270,19 @@ export const useGameStore = create<GameStore>((set, get) => ({
         });
         return;
       }
-      set({
-        combat: { ...combat, enemy: newEnemy, isPlayerTurn: false, tempoBar: newTempo },
-      });
-      // Enemy turn
-      setTimeout(() => doEnemyTurn(get, set), 400);
+      set({ combat: { ...combat, enemy: newEnemy, isPlayerTurn: false, tempoBar: newTempo } });
+      setTimeout(doEnemyTurn, 400);
     } else if (action === 'defend') {
-      set({
-        combat: {
-          ...combat,
-          tempoBar: Math.min(combat.maxTempo, combat.tempoBar + 1),
-          isPlayerTurn: false,
-        },
-      });
-      setTimeout(() => doEnemyTurn(get, set), 400);
+      set({ combat: { ...combat, tempoBar: Math.min(combat.maxTempo, combat.tempoBar + 1), isPlayerTurn: false } });
+      setTimeout(doEnemyTurn, 400);
     } else if (action === 'charge') {
-      set({
-        combat: {
-          ...combat,
-          tempoBar: Math.min(combat.maxTempo, combat.tempoBar + 3),
-          isPlayerTurn: false,
-        },
-      });
-      setTimeout(() => doEnemyTurn(get, set), 400);
+      set({ combat: { ...combat, tempoBar: Math.min(combat.maxTempo, combat.tempoBar + 3), isPlayerTurn: false } });
+      setTimeout(doEnemyTurn, 400);
     }
   },
 
   endCombat: () => {
-    set({ combat: null, screen: 'camp' });
+    set({ combat: null });
   },
 
   doRebirth: () => {
@@ -268,10 +302,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
         dreamLayer: player.dreamLayer + 1,
         name: player.name,
       },
-      resources: { ...INITIAL_RESOURCES },
+      resources: { ...INITIAL_RESOURCES, dreamShard: resources.dreamShard },
+      buildings: JSON.parse(JSON.stringify(BUILDING_DEFS)),
       equipment: anchored,
       talentTrees: JSON.parse(JSON.stringify(TALENT_TREES)),
-      screen: 'rebirth',
     });
     get().generateWillpowerCards();
   },
@@ -285,13 +319,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
       player: { ...player, willpower: player.willpower - card.cost },
       activeCards: [...activeCards, card],
       willpowerCards: willpowerCards.filter(c => c.id !== cardId),
-    });
-  },
-
-  equipItem: (eq) => {
-    const { equipment } = get();
-    set({
-      equipment: { ...equipment, [eq.slot]: eq },
     });
   },
 
@@ -309,7 +336,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
       activeCards: [],
       willpowerCards: [],
       combat: null,
-      screen: 'camp',
+      buildings: JSON.parse(JSON.stringify(BUILDING_DEFS)),
+      activeTab: 'gather',
+      trainingClass: 'warrior',
     });
   },
 
@@ -324,7 +353,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
         atk: playerClass === 'mage' ? 15 : playerClass === 'ranger' ? 14 : playerClass === 'rogue' ? 10 : 12,
         def: playerClass === 'warrior' ? 8 : playerClass === 'rogue' ? 3 : 4,
       },
-      screen: 'camp',
+      trainingClass: playerClass,
+      activeTab: 'gather',
+      resources: { ...INITIAL_RESOURCES, dreamShard: 50 },
     });
   },
 
@@ -334,49 +365,37 @@ export const useGameStore = create<GameStore>((set, get) => ({
       resources: save.resources,
       equipment: save.equipment,
       talentTrees: save.talentTrees,
+      buildings: save.buildings || JSON.parse(JSON.stringify(BUILDING_DEFS)),
+      trainingClass: save.trainingClass || save.player.playerClass,
       lastSaveTime: save.lastSavedAt,
     });
   },
 
   getSave: () => {
-    const { player, resources, equipment, talentTrees, lastSaveTime } = get();
+    const { player, resources, equipment, talentTrees, buildings, trainingClass, lastSaveTime } = get();
     return {
       player,
       resources: { ...resources },
       equipment: { ...equipment },
       talentTrees: JSON.parse(JSON.stringify(talentTrees)),
+      buildings: JSON.parse(JSON.stringify(buildings)),
+      trainingClass,
       lastSavedAt: lastSaveTime,
     } as GameSave;
   },
-
-  tickIdle: () => {
-    const { player, resources } = get();
-    const baseRate = 10 + player.level * 2;
-    const layerMultiplier = 1 + (player.dreamLayer - 1) * 0.2;
-    set({
-      resources: {
-        ...resources,
-        ironOre: resources.ironOre + Math.floor(baseRate * layerMultiplier * 0.05),
-        crystal: resources.crystal + Math.floor((baseRate * 0.4) * layerMultiplier * 0.05),
-      },
-    });
-  },
 }));
 
-function doEnemyTurn(get: () => GameStore, set: (partial: Partial<GameStore>) => void) {
-  const state = get();
+function doEnemyTurn() {
+  const state = useGameStore.getState();
   const combat = state.combat;
   if (!combat || !combat.isActive) return;
-  const isDefending = false; // player chose defend in previous action
-  const { damage } = calcDamage(combat.enemy.atk, 0, 1, isDefending);
+  const { damage } = calcDamage(combat.enemy.atk, 0, 1, false);
   const newHp = Math.max(0, combat.playerHp - damage);
   if (newHp <= 0) {
-    set({
-      combat: { ...combat, playerHp: 0, isActive: false, result: 'defeat' },
-    });
+    useGameStore.setState({ combat: { ...combat, playerHp: 0, isActive: false, result: 'defeat' } });
     return;
   }
-  set({
+  useGameStore.setState({
     combat: {
       ...combat,
       playerHp: newHp,

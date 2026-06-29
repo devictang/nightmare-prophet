@@ -1,4 +1,4 @@
-import type { TalentTree, EquipmentTemplate, Enemy, PlayerClass } from './types';
+import type { TalentTree, EquipmentTemplate, Enemy, PlayerClass, ProductionBuilding } from './types';
 
 export const CLASS_NAMES: Record<PlayerClass, string> = {
   warrior: '⚔️ 戰士',
@@ -14,9 +14,17 @@ export const CLASS_DESCRIPTIONS: Record<PlayerClass, string> = {
   ranger: '多面適應，精準與續航',
 };
 
-export const INITIAL_RESOURCES = {
-  ironOre: 100,
-  crystal: 50,
+export const CLASS_ICONS: Record<PlayerClass, string> = {
+  warrior: '⚔️',
+  rogue: '🗡️',
+  mage: '🔮',
+  ranger: '🏹',
+};
+
+export const INITIAL_RESOURCES: Resources = {
+  dreamShard: 50,
+  ironOre: 20,
+  crystal: 10,
   dreamFragment: 0,
   realityAnchor: 0,
 };
@@ -49,6 +57,83 @@ export const PRESENCE_AFFIXES: Record<number, string[]> = {
 export const EXPERIENCE_CURVE = (layer: number): number => {
   return Math.floor(100 * Math.pow(1.15, layer - 1));
 };
+
+// ─── Production Buildings (Cookie Clicker style) ───
+
+export const BUILDING_DEFS: ProductionBuilding[] = [
+  {
+    id: 'dream_catcher',
+    name: '夢境捕手',
+    description: '被動收集溢散的夢境能量',
+    icon: '🪤',
+    cost: 30,
+    costMultiplier: 1.15,
+    count: 0,
+    oreRate: 0.5,
+    crystalRate: 0.1,
+  },
+  {
+    id: 'crystal_mine',
+    name: '晶石礦坑',
+    description: '自動開採夢境晶石',
+    icon: '💎',
+    cost: 100,
+    costMultiplier: 1.18,
+    count: 0,
+    oreRate: 2,
+    crystalRate: 0.5,
+  },
+  {
+    id: 'iron_smelter',
+    name: '鐵匠熔爐',
+    description: '自動冶煉夢境鐵礦',
+    icon: '🔥',
+    cost: 300,
+    costMultiplier: 1.2,
+    count: 0,
+    oreRate: 8,
+    crystalRate: 1,
+  },
+  {
+    id: 'dream_well',
+    name: '夢境之井',
+    description: '深層夢境能量萃取',
+    icon: '🕳️',
+    cost: 1000,
+    costMultiplier: 1.25,
+    count: 0,
+    oreRate: 30,
+    crystalRate: 5,
+  },
+  {
+    id: 'reality_forge',
+    name: '現實鍛爐',
+    description: '高階材料精煉',
+    icon: '⚙️',
+    cost: 5000,
+    costMultiplier: 1.3,
+    count: 0,
+    oreRate: 100,
+    crystalRate: 20,
+  },
+  {
+    id: 'void_extractor',
+    name: '虛空萃取器',
+    description: '從虛空中提取純淨能量',
+    icon: '🌀',
+    cost: 20000,
+    costMultiplier: 1.35,
+    count: 0,
+    oreRate: 400,
+    crystalRate: 80,
+  },
+];
+
+export function getBuildingCost(def: ProductionBuilding): number {
+  return Math.floor(def.cost * Math.pow(def.costMultiplier, def.count));
+}
+
+// ─── Talent Trees ───
 
 export const TALENT_TREES: Record<PlayerClass, TalentTree> = {
   warrior: {
@@ -93,17 +178,16 @@ export const TALENT_TREES: Record<PlayerClass, TalentTree> = {
   },
 };
 
+// ─── Equipment ───
+
 export const EQUIPMENT_TEMPLATES: EquipmentTemplate[] = [
-  // Weapons
   { id: 'iron_sword', slot: 'weapon', name: '鐵劍', baseAtk: 12, baseDef: 0, affixPool: ['攻擊力 +5', '暴擊率 +2%'], description: '樸實的鐵製長劍' },
   { id: 'crystal_staff', slot: 'weapon', name: '晶石法杖', baseAtk: 10, baseDef: 0, affixPool: ['法術傷害 +8%', '法力上限 +1'], description: '嵌有夢境晶石的法杖' },
   { id: 'shadow_blade', slot: 'weapon', name: '暗影匕首', baseAtk: 8, baseDef: 0, affixPool: ['暴擊率 +5%', '暴擊傷害 +15%'], description: '薄刃淬毒，無聲奪命' },
   { id: 'hunters_bow', slot: 'weapon', name: '獵人弓', baseAtk: 10, baseDef: 0, affixPool: ['命中率 +5%', '暴擊傷害 +10%'], description: '輕巧的狩獵長弓' },
-  // Armor
   { id: 'iron_armor', slot: 'armor', name: '鐵甲', baseAtk: 0, baseDef: 10, affixPool: ['防禦力 +5', 'HP +20'], description: '厚重的鐵製護甲' },
   { id: 'cloth_robe', slot: 'armor', name: '法袍', baseAtk: 0, baseDef: 5, affixPool: ['法力上限 +1', '法術傷害 +5%'], description: '輕柔的祕法長袍' },
   { id: 'leather_vest', slot: 'armor', name: '皮甲', baseAtk: 0, baseDef: 7, affixPool: ['閃避率 +3%', 'HP +15'], description: '輕便的皮製護甲' },
-  // Accessories
   { id: 'power_ring', slot: 'accessory', name: '力量指環', baseAtk: 5, baseDef: 0, affixPool: ['攻擊力 +8', '暴擊率 +2%'], description: '注入戰意的古老指環' },
   { id: 'guardian_amulet', slot: 'accessory', name: '守護項鏈', baseAtk: 0, baseDef: 5, affixPool: ['防禦力 +5', 'HP +30'], description: '展開微弱防護力場' },
   { id: 'speed_brooch', slot: 'accessory', name: '疾風胸針', baseAtk: 3, baseDef: 0, affixPool: ['開局 +1 格氣力', '閃避率 +4%'], description: '蘊含風元素能量' },
@@ -134,25 +218,4 @@ export const WILLPOWER_CARDS = [
   { id: 'wp10', name: '建造大師', quality: 'rare' as const, description: '採集資源產量 +25%', effect: 'gathering_boost', cost: 90, icon: '🏗️', color: '#3b82f6' },
 ];
 
-export const SKILLS: Record<PlayerClass, { id: string; name: string; cost: number; cooldown: number; damage: number; description: string }[]> = {
-  warrior: [
-    { id: 'ws1', name: '破甲斬', cost: 2, cooldown: 2, damage: 1.5, description: '無視 50% 防禦' },
-    { id: 'ws2', name: '旋風斬', cost: 3, cooldown: 3, damage: 1.8, description: '全體攻擊' },
-    { id: 'ws3', name: '戰吼', cost: 1, cooldown: 4, damage: 0.5, description: '提升攻擊力 30% 持續 2 回合' },
-  ],
-  rogue: [
-    { id: 'rs1', name: '暗影步', cost: 1, cooldown: 2, damage: 1.8, description: '必定暴擊' },
-    { id: 'rs2', name: '毒刃', cost: 2, cooldown: 3, damage: 1.3, description: '附加流血 3 回合' },
-    { id: 'rs3', name: '終結技', cost: 4, cooldown: 4, damage: 3.0, description: '消耗所有氣力，每格 +50% 傷害' },
-  ],
-  mage: [
-    { id: 'ms1', name: '火球術', cost: 2, cooldown: 2, damage: 1.6, description: '附帶燃燒 2 回合' },
-    { id: 'ms2', name: '冰風暴', cost: 3, cooldown: 3, damage: 1.4, description: '全體攻擊 + 減速' },
-    { id: 'ms3', name: '祕法衝擊', cost: 4, cooldown: 4, damage: 2.8, description: '單體爆發' },
-  ],
-  ranger: [
-    { id: 'hs1', name: '貫穿箭', cost: 2, cooldown: 2, damage: 1.5, description: '無視防守' },
-    { id: 'hs2', name: '連射', cost: 2, cooldown: 3, damage: 1.2, description: '連續攻擊 2 次' },
-    { id: 'hs3', name: '終極狩獵', cost: 4, cooldown: 4, damage: 2.5, description: '對低血量敵人額外 +50% 傷害' },
-  ],
-};
+import type { Resources } from './types';
